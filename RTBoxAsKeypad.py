@@ -5,9 +5,10 @@ way. But if one likes to use the RTBox hardware with other software toolkit,
 this may be useful. Python has to leave open for this to work.
 Note that, as a keypad, the hardware won't have any delay or bias as regular
 keyboard will, but the system delay of key detection will apply to the timing.
-20170412 By Xiangrui Li (xiangrui.li at gmail.com) """
+170412 By Xiangrui Li (xiangrui.li at gmail.com) """
 
 import RTBox
+from time import sleep
 from threading import Timer
 from pynput.keyboard import Controller
 
@@ -48,15 +49,15 @@ class RTBoxAsKeypad:
 
     def _timer_func(self):
         """ Worker function called by timer. """
-        try: 
-            if self._ser.in_waiting:
-                b = bin(ord(self._ser.read(1)))[::-1]
-                if b.count('1')==1: # ignore if +1 bits set
-                    k = self.keys[b.find('1')]
-                    self._kb.press(k); self._kb.release(k)
-        except:
-            self._ser.close() # no complain
-            return  # stop timer_func if any exception
+        if not self._ser.is_open: return # stop timer
+        try:    n = self._ser.bytesAvailable()
+        except: n = self._ser.in_waiting
+
+        for i in range(n):
+            b = bin(ord(self._ser.read(1)))[::-1]
+            if b.count('1')==1: # ignore if +1 bits set
+                k = self.keys[b.find('1')]
+                self._kb.press(k); sleep(0.04); self._kb.release(k)
             
         t = Timer(self.interval, self._timer_func)
         t.daemon = True # ensure timer stops when exit 

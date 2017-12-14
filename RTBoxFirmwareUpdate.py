@@ -60,7 +60,9 @@ def RTBoxFirmwareUpdate(hexFileName=None):
     
     box = RTBox.RTBox()
     ser = box._ser
-    ser.timeout = 1.0    
+    ser.timeout = 1.0
+    try: ser.setTimeouts(1.0)
+    except: ser.timeout = 1.0
     
     if int(v) != int(box._p.version): # major version different
         try:

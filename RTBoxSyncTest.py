@@ -1,5 +1,6 @@
 #from RTBoxSyncTest import RTBoxSyncTest; RTBoxSyncTest(interval=1.0, n=30)
-import RTBox, time
+import RTBox
+import time
 import numpy as np
 from threading import Timer
 
@@ -14,6 +15,7 @@ def show(t):
     rst = 'Variation range: %.2g | %.2g ms \n(before | after removing drift)' \
                   % (np.ptp(t[:,0]), np.ptp(r))
     if abs(c[0]/se)>10: rst += '\nRecommend to run clockRatio()'
+    print(rst.replace('\n', '. '))
     try:
         import matplotlib.pyplot as plt
         plt.plot(t[:,1], t[:,0], 'b.', t[:,1], r, 'r+')
@@ -22,8 +24,7 @@ def show(t):
         plt.ylabel('Clock diff variation (ms)')
         plt.text(t.shape[0]/10, 0.6, rst)
         plt.show()
-    except:
-        print(rst.replace('\n', '. '))
+    except: pass
     
 def RTBoxSyncTest(interval=1.0, n=30):
     """Measure host and RTBox clock difference at interval for n times"""

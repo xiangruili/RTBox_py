@@ -3,17 +3,23 @@
 http://lobes.osu.edu/rt-box.php
     box = RTBox.RTBox() # open RTBox
 Then check the methods for box for detail information.
-Packages required: pySerial, numpy and pynput
+Packages required: numpy and pynput
 170402 By Xiangrui Li (xiangrui.li at gmail.com)
-170505 ready to publish to users """
+170505 ready to publish to users
+171023 start to use ftd2xx lib """
 
-__version__ = '2017.09.09'
+__version__ = '2017.10.23'
 _instances = [] # store RTBox instances
 
 import numpy as np
 from pynput import keyboard
+try: import serFTDI; use_serFTDI = serFTDI.Accessible()
+except: use_serFTDI = False
+if not use_serFTDI: 
+    try: del serFTDI
+    except: pass
 
-def sys_cmd(cmd):
+def sys_cmd(cmd): # only needed for latency timer for now
     """ Call system command 'cmd', and return screen output as string """
     import subprocess as sp
     try:
@@ -23,7 +29,7 @@ def sys_cmd(cmd):
         return out.decode('utf-8') # decode() needed for python3    
     except:
         return sp.os.popen(cmd).read() # fallback for earlier python    
-    
+
 def keyName():
     """Show the name of a pressed key on the keyboard. The name can be used
     for waitKeys(keys) and the RTBox button names at keyboard simulation mode.
@@ -42,7 +48,6 @@ def _esc_exit(lis):
     if not lis.esc_exit: return
     if lis.running: lis.stop()
     raise KeyboardInterrupt('User pressed ESC. Exiting ...')
-
 
 class RTBox(object):
     """Open serial port, return RTBox instance for later access.
@@ -74,6 +79,7 @@ class RTBox(object):
     This allows to test stimulus code without RTBox hardware connected. Then one
     can use keyboard to simulate response without RTBox-not-found exception.
     """
+
     def __new__(cls, boxID=0):
         for box in _instances:
             if box._p.boxID==boxID: return box # existing instance
@@ -121,10 +127,13 @@ class RTBox(object):
         self._p.is_open = True
         self._ser = ser
 
-        lat = self._latencyTimer()
-        self._p.latencyTimer = lat / 1000.0
-        if lat>2: print('Please change the USB serial port latency timer to 2 ms ' +
-                         'following the instruction in User\'s Manual')
+        if use_serFTDI:
+            self._p.latencyTimer = self._ser._info.LatencyTimer         
+        else:
+            lat = self._latencyTimer()
+            self._p.latencyTimer = lat / 1000.0
+            if lat>2: print('Please change the USB serial port latency timer to 2 ms ' +
+                            'following the instruction in User\'s Manual')
         
         try: # get TTL params, threshold, debounceInterval from EEPROM
             b = self._readEEPROM(224, 6)
@@ -137,7 +146,7 @@ class RTBox(object):
         try: # get clkRatio from EEPROM 
             for i in range(16): # max number of MAC to store
                 b14 = self._readEEPROM(i*14, 14);
-                if b14[0:8].count(b'\0xff') ==8: break # EEPROM not written
+                if b14[:8].count(b'\0xff') ==8: break # EEPROM not written
                 if self._p.MAC[1:]==b14[8:] : break # found its MAC loc
             
             if i==15: i = 0 # all slots written
@@ -182,9 +191,7 @@ class RTBox(object):
         for j in range(5): # in case of error, try several times
             for i in range(n):
                 self.waitSecs(0.001*(np.random.rand()+0.7)) # 0.7 allow 7-byte finish
-                t[i,0] = self.hostSecs() # tpre
-                self._ser.write(b'Y') # blocking write by default
-                t[i,1] = self.hostSecs() # tpost
+                (t[i,0], t[i,1]) = self._write_time(b'Y')
                 
             b = bytearray(self._ser.read(7*n))
             if len(b)==7*n and all(x==89 for x in b[::7]): break
@@ -201,8 +208,18 @@ class RTBox(object):
     def eventsAvailable(self):
         """ Return number of events in serial buffer.
         Number in fraction means event is still coming. """
-        if not self._p.is_open: return 0
+        if not self._p.is_open: return 0.0
         return self._bytesAvailable() / 7.0
+
+    def _write_time(self, b): # take care of pySerial
+        if use_serFTDI:
+            return self._ser.write(b)
+        else:            
+            tpre = self.hostSecs()
+            self._ser.write(b)
+            while self._ser.out_waiting>0: pass
+            tpost = self.hostSecs()
+            return (tpre, tpost)
  
     def TTL(self, eventCode=1):
         """Send TTL to pins 1~8 at DB25 port.
@@ -216,9 +233,7 @@ class RTBox(object):
         b = int(eventCode)
         v = self._p.version
         b = [1, b] if v>=5 else [b]
-        tpre = self.hostSecs()
-        self._ser.write(bytearray(b))
-        tpost = self.hostSecs()
+        (tpre, tpost) = self._write_time(bytearray(b))
 
         b = b[-1] # check error after sending anyway
         t_write = 20.0/115200 if v>=5 else 10.0/115200
@@ -237,14 +252,14 @@ class RTBox(object):
         for i in range(n): # sync once every second
             self.waitSecs(0.98) # each measure takes ~20ms
             _esc_exit(lis)
-            t[i,:] = self.clockDiff()[:2]
+            t[i,:] = self.clockDiff(20)[:2]
         lis.stop()
         
         t[:,0] -= np.mean(t[:,0])
         t[:,1] -= np.mean(t[:,1])
         c = np.polyfit(t[:,1], t[:,0], 1) # linear fit
         self._p.clkRatio *= 1+c[0] # apply slope
-        self._p.sync = self.clockDiff(20) # sync with new ratio
+        self._p.sync = self.clockDiff() # sync with new ratio
         
         if n>=20: # save ratio to EEPROM only when n is large
             b = list(np.frombuffer(self._p.clkRatio, np.uint8))
@@ -610,7 +625,7 @@ class RTBox(object):
             print('RTBox.py at fake mode: True')
             return
         print('boxID: %s, v%g' % (self._p.boxID, self._p.version))
-        print('Serial port: ' + self._ser.port)
+        print('Serial port: %s' % self._ser.port)
         print('hostClock/boxClock unit ratio - 1: %.2g' % (self._p.clkRatio-1))
         print('hostSecs-boxSecs offset: %.5f + %.5f' % (self._p.sync[0],self._p.sync[2]))
         print('Latency Timer: %g' % self._p.latencyTimer)
@@ -623,16 +638,18 @@ class RTBox(object):
         print('Number of events available: %.2g' % self.eventsAvailable())
 
     def _bytesAvailable(self): # take care of pySerial version change
-        try: return self._ser.in_waiting
-        except: return self._ser.inWaiting()
+        if use_serFTDI:
+            return self._ser.bytesAvailable()
+        else:
+            try: return self._ser.in_waiting
+            except: return self._ser.inWaiting()
 
     def _purge(self):
         n, n1 = -1, self._bytesAvailable()
         while n1>n:
             self.waitSecs(self._p.latencyTimer+0.002)
             n, n1 = n1, self._bytesAvailable()
-        try: self._ser.reset_input_buffer()
-        except: self._ser.flushInput() # old pySerial
+        if n>0: self._ser.read(n) # avoid _ser.purge()
 
     def _readEEPROM(self, addr, nBytes):
         """Read 'nBytes' bytes from RTBox EEPROM at address 'addr'"""
@@ -644,6 +661,7 @@ class RTBox(object):
         if self._p.fake: return
         self._ser.write(bytearray([16, addr, len(bList)]))
         self._ser.write(bytearray(bList))
+        self._ser.write(bytearray([3, 2])) # extra 2 useless bytes
         self._purge()
 
     def _enableEvents(self, byt=None):
@@ -726,6 +744,7 @@ class RTBox(object):
             else: print('Unknown system: ' + self._p.sysinfo)
         except: return 16
 
+
     def hostClock(self, host_clock=None):
         """hostClock = box.hostClock() # if no input, query the host clock
         box.hostClock(time.perf_counter) # set host clock 
@@ -768,7 +787,7 @@ class RTBox(object):
             if secs>0.2: sleep(secs-0.2) # better for CPU?
             while clk() < tout: pass # tight polling for last 0.2 sec
         
-        self.waitSecs = waitSecs # Time wait funciton used by RTBox
+        self.waitSecs = waitSecs # Time wait function used by RTBox
         self.hostSecs = clk # Host time used by RTBox
         self._p.hostClock = clk.__module__ + '.' + clk.__name__
         if self._p.is_open: self._p.sync = self.clockDiff()
@@ -785,8 +804,7 @@ class RTBox(object):
         t0 = self.hostSecs() - self._p.sync[0]
         print(' Waiting for events. Press ESC to stop.')
         print('%9s%9s-%.4f' % ('Event', 'secs', t0))
-        while True:
-            if esc.esc_exit: break
+        while not esc.esc_exit:
             (t, ev) = self.boxSecs() # avoid listening key in _read()
             for i in range(len(t)): print('%9s%12.4f' % (ev[i], t[i]-t0))
 
@@ -832,29 +850,36 @@ class RTBox(object):
     def _openBox(self):
         """(ser, ver) = _openBox()
         Open RTBox serial port, and return the port instance and RTBox firmware version.
-        Raise serial.SerialException if no available RTBox port is found.
+        Raise exception if no available RTBox port is found.
         """
-        import serial
-        from serial.tools.list_ports import comports
-        try: import fcntl # take care of multiple open in unix
-        except: pass
-
-        self._p.sysinfo += '; pySerial '+ serial.VERSION
+        if use_serFTDI:
+            self._p.sysinfo += '; serFTDI '+ serFTDI.__version__
+            ports = range(serFTDI.NumberOfPorts())
+        else:
+            import serial
+            from serial.tools.list_ports import comports
+            # p has ['COM4', 'USB Serial Port (COM4)', 'USB VID:PID=0403:6001 SER=6']
+            ports = [p[0] for p in comports() if '0403:6001' in p[2]]
+            try: import fcntl # take care of multiple open in unix
+            except: pass
+            self._p.sysinfo += '; pySerial '+ serial.VERSION
+            
         inUse = [] # for error message
         for box in _instances: inUse.append(box._ser.port)
-        for p in comports():
+        for p in ports:
             try:
-                # p has ['COM4', 'USB Serial Port (COM4)', 'USB VID:PID=0403:6001 SER=6']
-                if p[0] in inUse or 'USB' not in p[2] or '0403:6001' not in p[2]: continue
-                ser = serial.Serial(p[0], 115200, timeout=0.2)
+                if p in inUse: continue
+                if use_serFTDI:
+                    ser = serFTDI.FTD2XX(p, self.hostSecs)
+                else:
+                    ser = serial.Serial(p, 115200, timeout=0.3)
+                    if 'fcntl' in locals():
+                        try: # PTB ioctl(TIOCEXCL) the same as this?
+                            fcntl.flock(ser.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        except IOError: # already in use
+                            ser.close() # buffer cleared when open, not ideal
+                            raise serial.SerialException(p[0] + ' in use') # record inUse 
                 
-                if 'fcntl' in locals():
-                    try: # PTB ioctl(TIOCEXCL) the same as this?
-                        fcntl.flock(ser.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    except IOError: # already in use
-                        ser.close() # buffer cleared when open, not ideal
-                        raise serial.SerialException(p[0] + ' in use') # record inUse
-                    
                 ser.write(b'X')
                 ID = ser.read(21) # 'USTCRTBOX,921600,v###'
                 if ID.startswith(b'?'): # maybe in ADC or boot
@@ -867,8 +892,7 @@ class RTBox(object):
                     if v>100: v /= 100
                     return (ser, v)
                 ser.close()
-            except (OSError, serial.SerialException):
-                inUse.append(p[0]) # normally denied access
+            except: inUse.append(p) # normally denied access
 
         # if not return yet, get some useful error info   
         if len(inUse)==0:
@@ -877,4 +901,4 @@ class RTBox(object):
             err = 'Possible RTBox port %s is already in use' % inUse[0]
         else: 
             err = 'Possible RTBox ports %s are already in use' % inUse
-        raise serial.SerialException('\n ' + self._p.sysinfo + '\n ' + err)
+        raise EnvironmentError('\n ' + self._p.sysinfo + '\n ' + err)
