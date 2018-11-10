@@ -80,7 +80,7 @@ class RTBox(object):
     can use keyboard to simulate response without RTBox-not-found exception.
     """
 
-    def __new__(cls, boxID=0):
+    def __new__(cls, host_clock=None, boxID=0):
         for box in _instances:
             if box._p.boxID==boxID: return box # existing instance
         return super(RTBox,cls).__new__(cls) # create new instance
@@ -155,6 +155,7 @@ class RTBox(object):
             if np.sys.byteorder == 'big': ratio = np.frombuffer(b14[7::-1])[0]
             if abs(ratio-1)<0.01: self._p.clkRatio = ratio
         except: self._p.MAC[0] = 28 # avoid first slot
+        
         if self._p.clkRatio==1:
             print ('Please run box.clockRatio() for better accurracy')
         self._p.sync = self.clockDiff()
@@ -789,6 +790,9 @@ class RTBox(object):
         
         self.waitSecs = waitSecs # Time wait function used by RTBox
         self.hostSecs = clk # Host time used by RTBox
+        if use_serFTDI:
+            try: self._ser.hostSecs = clk # Host time for serFTDI
+            except: pass 
         self._p.hostClock = clk.__module__ + '.' + clk.__name__
         if self._p.is_open: self._p.sync = self.clockDiff()
         return self._p.hostClock # info only
