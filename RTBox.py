@@ -8,7 +8,7 @@ Packages required: numpy and pynput
 170505 ready to publish to users
 171023 start to use ftd2xx lib """
 
-__version__ = '2017.10.23'
+__version__ = '2019.11.06'
 _instances = [] # store RTBox instances
 
 import numpy as np
@@ -109,7 +109,7 @@ class RTBox(object):
             latencyTimer = 0.016
             hostClock = None
             import platform as pf
-            sysinfo = pf.system() + ' ' + pf.release() + '; Python ' + pf.python_version()
+            sysinfo = pf.platform() + '\nPython ' + pf.python_version()
             
         self._p = _default()
         self._p.boxID = boxID
@@ -857,7 +857,7 @@ class RTBox(object):
         Raise exception if no available RTBox port is found.
         """
         if use_serFTDI:
-            self._p.sysinfo += '; serFTDI '+ serFTDI.__version__
+            self._p.sysinfo += '\nserFTDI '+ serFTDI.__version__
             ports = range(serFTDI.NumberOfPorts())
         else:
             import serial
@@ -866,7 +866,7 @@ class RTBox(object):
             ports = [p[0] for p in comports() if '0403:6001' in p[2]]
             try: import fcntl # take care of multiple open in unix
             except: pass
-            self._p.sysinfo += '; pySerial '+ serial.VERSION
+            self._p.sysinfo += '\npySerial '+ serial.VERSION
             
         inUse = [] # for error message
         for box in _instances: inUse.append(box._ser.port)
@@ -905,4 +905,4 @@ class RTBox(object):
             err = 'Possible RTBox port %s is already in use' % inUse[0]
         else: 
             err = 'Possible RTBox ports %s are already in use' % inUse
-        raise EnvironmentError('\n ' + self._p.sysinfo + '\n ' + err)
+        raise EnvironmentError('\n' + self._p.sysinfo + '\n' + err)
