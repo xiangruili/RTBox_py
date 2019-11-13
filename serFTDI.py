@@ -2,7 +2,7 @@
 Python module to control FTDI USB-serial port via D2XX driver.
 171021 Xiangrui.Li at gmail.com simplify code from https://github.com/ctrl-shift-esc/ftd2xx
 """
-__version__ = '2017.11.25'
+__version__ = '2019.11.06'
 _PORTS = [] # open port indice
 
 import os
@@ -19,10 +19,14 @@ if os.sys.platform.startswith('win'):
     except: dll = c.WinDLL(libPath+'ftd2xx.dll')
 elif os.sys.platform.startswith('linux'):
     try: dll = c.CDLL('libftd2xx.so')
-    except: dll = c.CDLL(libPath+'libftd2xx.so')
+    except:
+        import glob
+        dll = c.CDLL(glob.glob(libPath+'libftd2xx.so*')[0])
 else:
     try: dll = CDLL('libftd2xx.dylib')
-    except: dll = c.CDLL(libPath+'libftd2xx.dylib')
+    except:
+        import glob
+        dll = c.CDLL(glob.glob(libPath+'libftd2xx*.dylib')[0])
 
 msgs = ['OK', 'INVALID_HANDLE', 'DEVICE_NOT_FOUND', 'DEVICE_NOT_OPENED',
         'IO_ERROR', 'INSUFFICIENT_RESOURCES', 'INVALID_PARAMETER',
