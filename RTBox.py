@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """This controls the response time box (RTBox) shown at
-http://lobes.osu.edu/rt-box.php
+https://github.com/xiangruili/RTBox_py 
     box = RTBox.RTBox() # open RTBox
 Then check the methods for box for detail information.
 Packages required: numpy and pynput
@@ -838,7 +838,7 @@ class RTBox(object):
         return lis
 
     def waitKeys(self, keys='space'):
-        """Wait for a keyboard key press, and return the keyp ress time and key name
+        """Wait for a keyboard key press, and return the key press time and key name
         in format of (time, name).
         The input can be a single key or a list of keys. RTBox.keyName() will
         show the name of a pressed key. Only the specified keys will be detected.
