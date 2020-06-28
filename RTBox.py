@@ -6,9 +6,10 @@ Then check the methods for box for detail information.
 Packages required: numpy and pynput
 170402 By Xiangrui Li (xiangrui.li at gmail.com)
 170505 ready to publish to users
-171023 start to use ftd2xx lib """
+171023 start to use ftd2xx lib
+200614 Impement digitalIn for version 5.23 and 6.12 """
 
-__version__ = '2019.11.06'
+__version__ = '2020.06.16'
 _instances = [] # store RTBox instances
 
 import numpy as np
@@ -463,6 +464,25 @@ class RTBox(object):
         v = self._p.version
         if v>=4.7 or (v>1.9 and v<2): return [b[1]>>i & 1 for i in range(4)]
         else: return [b[1]>>i & 1 for i in range(4,8)]
+
+    def digitalIn(self, toReverse=False):
+        """Return the digital input from pins 1~8 at DA-15 port.
+        The pins 1~4 are also connected to button 1~4. All 8 pins are pulled up,
+        so the original high level means resting state. If the optional input,
+        toReverse is provided to and is ture, this will return reversed level.
+        """
+        if self._p.fake: return None
+        v = self._p.version
+        if v<5: print ('digitalIn supported for version 5+.'); return None
+        if v<5.22 or (v>6 and v<6.12): print ('Please update the RTBox firmware.'); return None
+
+        while True:
+            self._purge()
+            self._ser.write(chr(8))
+            b = bytearray(self._ser.read(2)) # return 2 bytes
+            if len(b)==2 and b[0]==8: break
+        if toReverse: return np.uint8(255-b[1])
+        return np.uint8(b[1])
 
     def enableState(self):
         """Return the enabled events in the hardware.
