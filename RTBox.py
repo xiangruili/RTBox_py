@@ -9,9 +9,10 @@ Packages required: numpy and pynput
 171023 start to use ftd2xx lib
 200614 Impement digitalIn for version 5.23 and 6.12 """
 
-__version__ = '2020.06.16'
+__version__ = '2025.08.19'
 _instances = [] # store RTBox instances
 
+import sys
 import numpy as np
 from pynput import keyboard
 try: import serFTDI; use_serFTDI = serFTDI.Accessible()
@@ -153,7 +154,7 @@ class RTBox(object):
             if i==15: i = 0 # all slots written
             self._p.MAC[0] = i*14 # ratio location in EEPROM
             ratio = np.frombuffer(b14[:8])[0]
-            if np.sys.byteorder == 'big': ratio = np.frombuffer(b14[7::-1])[0]
+            if sys.byteorder == 'big': ratio = np.frombuffer(b14[7::-1])[0]
             if abs(ratio-1)<0.01: self._p.clkRatio = ratio
         except: self._p.MAC[0] = 28 # avoid first slot
         
@@ -265,7 +266,7 @@ class RTBox(object):
         
         if n>=20: # save ratio to EEPROM only when n is large
             b = list(np.frombuffer(self._p.clkRatio, np.uint8))
-            if np.sys.byteorder == 'big': b = b[::-1]
+            if sys.byteorder == 'big': b = b[::-1]
             self._writeEEPROM(self._p.MAC[0], bytearray(b)+self._p.MAC[1:])
         return self._p.clkRatio
     
@@ -704,7 +705,7 @@ class RTBox(object):
         try:
             if myOS.startswith('windows'):
                 port = port.rsplit('\\', 1)[-1]
-                ftdi = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\FTDIBUS'
+                ftdi = r'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\FTDIBUS'
                 s = sys_cmd('reg.exe query "%s" /s /e /f %s' % (ftdi, port))
                 if len(s)<1: # old reg.exe
                     p = '| findstr /e "' + port + ' Parameters"'
@@ -926,3 +927,4 @@ class RTBox(object):
         else: 
             err = 'Possible RTBox ports %s are already in use' % inUse
         raise EnvironmentError('\n' + self._p.sysinfo + '\n' + err)
+        
